@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "main": "dist/main.js",
-  "type": "module",
   "scripts": {
     "dev": "electron-forge start",
     "build": "electron-forge package",
