@@ -1,0 +1,28 @@
+{
+  "name": "@kiroclone/app-electron",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "electron-forge start",
+    "build": "electron-forge package",
+    "make": "electron-forge make"
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.10.2",
+    "@electron-forge/maker-deb": "^7.10.2",
+    "@electron-forge/maker-rpm": "^7.10.2",
+    "@electron-forge/maker-squirrel": "^7.10.2",
+    "@electron-forge/maker-zip": "^7.10.2",
+    "@types/node": "^20.14.12",
+    "cross-env": "^7.0.3",
+    "electron": "^28.3.3",
+    "esbuild": "^0.24.0",
+    "tslib": "^2.6.3",
+    "typescript": "^5.6.3"
+  }
+}

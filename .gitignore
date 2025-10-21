@@ -1,0 +1,12 @@
+﻿# Node
+node_modules
+dist
+build
+out
+.temp
+.tmp
+.DS_Store
+
+# Env
+.env
+*.log

@@ -1,0 +1,21 @@
+{
+  "name": "@kiroclone/app-renderer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cd ../.. && pnpm exec vite --config packages/app-renderer/vite.config.ts",
+    "build": "cd ../.. && pnpm exec vite build --config packages/app-renderer/vite.config.ts",
+    "preview": "cd ../.. && pnpm exec vite preview --port 5173 --config packages/app-renderer/vite.config.ts"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.8"
+  }
+}
