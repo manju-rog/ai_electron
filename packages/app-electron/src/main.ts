@@ -23,7 +23,8 @@ const createWindow = async () => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: false,
+      webSecurity: false
     }
   });
 
@@ -36,8 +37,47 @@ app.on('ready', createWindow);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 
-// Reserved for future: IPC to local server (health check)
-ipcMain.handle('ping-server', async () => ({ ok: true }));
+// IPC handlers for server communication
+ipcMain.handle('ping-server', async () => {
+  try {
+    const fetch = require('node-fetch');
+    const response = await fetch('http://127.0.0.1:4455/health');
+    const data = await response.json();
+    return { ok: response.ok, data };
+  } catch (error: any) {
+    return { ok: false, error: error?.message || 'Unknown error' };
+  }
+});
+
+ipcMain.handle('chat-request', async (_event: any, requestBody: any) => {
+  try {
+    const fetch = require('node-fetch');
+    const response = await fetch('http://127.0.0.1:4455/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+    const data = await response.json();
+    return { ok: response.ok, data };
+  } catch (error: any) {
+    return { ok: false, error: error?.message || 'Unknown error' };
+  }
+});
+
+ipcMain.handle('spec-request', async (_event: any, requestBody: any) => {
+  try {
+    const fetch = require('node-fetch');
+    const response = await fetch('http://127.0.0.1:4455/generate/spec', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+    const data = await response.json();
+    return { ok: response.ok, data };
+  } catch (error: any) {
+    return { ok: false, error: error?.message || 'Unknown error' };
+  }
+});
 
 ipcMain.handle('file-open', async () => {
   console.log('file-open IPC handler called');

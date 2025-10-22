@@ -5,8 +5,8 @@ import { push, setBusy, setError, clear, type Msg } from '../store/chatSlice';
 import { setProvider, setModel, setAutopilot } from '../store/settingsSlice';
 
 const modelsByProvider: Record<string, string[]> = {
-  auto: ['claude-3.5-sonnet','gpt-4o','gpt-5','claude-sonnet-4'],
-  anthropic: ['claude-3.5-sonnet','claude-sonnet-4'],
+  auto: ['claude-sonnet-4','claude-3.5-sonnet','gpt-4o','gpt-5'],
+  anthropic: ['claude-sonnet-4','claude-3.5-sonnet'],
   openai: ['gpt-4o','gpt-4o-mini','gpt-5'],
   mock: ['mock-echo']
 };
@@ -27,14 +27,13 @@ export const ChatSidebar: React.FC = () => {
     setInput('');
 
     try {
-      const res = await fetch('http://127.0.0.1:4455/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, model, messages: [{ role:'user', content: input }] })
+      const result = await window.kirobridge?.chatRequest?.({ 
+        provider, 
+        model, 
+        messages: [{ role:'user', content: input }] 
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'chat_failed');
-      dispatch(push({ role: 'assistant', content: data.content || '' }));
+      if (!result?.ok) throw new Error(result?.error || result?.data?.error || 'chat_failed');
+      dispatch(push({ role: 'assistant', content: result.data.content || '' }));
     } catch (e: any) {
       dispatch(setError(e?.message ?? 'chat_failed'));
     } finally {
@@ -46,14 +45,13 @@ export const ChatSidebar: React.FC = () => {
     if (!input.trim() || busy) return;
     dispatch(setBusy(true)); dispatch(setError(undefined));
     try {
-      const res = await fetch('http://127.0.0.1:4455/generate/spec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, model, prompt: input })
+      const result = await window.kirobridge?.specRequest?.({ 
+        provider, 
+        model, 
+        prompt: input 
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'spec_failed');
-      dispatch(push({ role: 'assistant', content: data.content || '' }));
+      if (!result?.ok) throw new Error(result?.error || result?.data?.error || 'spec_failed');
+      dispatch(push({ role: 'assistant', content: result.data.content || '' }));
     } catch (e: any) {
       dispatch(setError(e?.message ?? 'spec_failed'));
     } finally {

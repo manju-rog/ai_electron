@@ -15,6 +15,8 @@ declare global {
   interface Window {
     kirobridge?: {
       pingServer: () => Promise<{ ok: boolean }>;
+      chatRequest: (requestBody: any) => Promise<{ ok: boolean; data?: any; error?: string }>;
+      specRequest: (requestBody: any) => Promise<{ ok: boolean; data?: any; error?: string }>;
       openFolder: () => Promise<{ root: string } | null>;
       readDirTree: () => Promise<FileEntry[]>;
       readFileByPath: (relPath: string) => Promise<{ path: string; content: string } | null>;
@@ -34,8 +36,8 @@ const App: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch('http://127.0.0.1:4455/health');
-        setServerOk(r.ok);
+        const result = await window.kirobridge?.pingServer?.();
+        setServerOk(result?.ok || false);
       } catch { setServerOk(false); }
     })();
   }, []);

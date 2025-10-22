@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { ChatProvider, ChatRequest, ChatResponse } from './types';
 
 const MAP: Record<string, string> = {
-  'claude-sonnet-4': 'claude-3-5-sonnet-20241022', // future alias
+  'claude-sonnet-4': 'claude-sonnet-4-20250514', // actual Sonnet 4 model
   'claude-3.5-sonnet': 'claude-3-5-sonnet-20241022',
   'claude-3.5-sonnet-latest': 'claude-3-5-sonnet-20241022'
 };
@@ -12,8 +12,11 @@ export class AnthropicProvider implements ChatProvider {
   private client?: Anthropic;
 
   constructor() {
-    const key = process.env.ANTHROPIC_API_KEY;
-    if (key) this.client = new Anthropic({ apiKey: key });
+    // For local development, replace 'YOUR_API_KEY_HERE' with your actual key
+    const key = process.env.ANTHROPIC_API_KEY || 'YOUR_API_KEY_HERE';
+    if (key && key !== 'YOUR_API_KEY_HERE') {
+      this.client = new Anthropic({ apiKey: key });
+    }
   }
 
   available() { return !!this.client; }

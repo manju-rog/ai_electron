@@ -20,6 +20,9 @@ importers:
       electron-squirrel-startup:
         specifier: ^1.0.0
         version: 1.0.1
+      node-fetch:
+        specifier: '2'
+        version: 2.7.0(encoding@0.1.13)
     devDependencies:
       '@electron-forge/cli':
         specifier: ^7.10.2

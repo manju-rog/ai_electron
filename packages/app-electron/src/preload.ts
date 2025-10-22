@@ -2,6 +2,10 @@
 
 contextBridge.exposeInMainWorld('kirobridge', {
   pingServer: () => ipcRenderer.invoke('ping-server'),
+  
+  // AI Chat endpoints
+  chatRequest: (requestBody: any) => ipcRenderer.invoke('chat-request', requestBody),
+  specRequest: (requestBody: any) => ipcRenderer.invoke('spec-request', requestBody),
 
   // Workspace
   openFolder: () => ipcRenderer.invoke('workspace-open'),                     // returns {root: string} | null
