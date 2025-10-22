@@ -437,3 +437,5 @@ ipcMain.handle('staging-reject', async (_e: any, rel: string) => {
 });
 
 ipcMain.handle('activity-feed', async () => activity);
+
+ipcMain.handle('workspace-root', async () => workspaceRoot);

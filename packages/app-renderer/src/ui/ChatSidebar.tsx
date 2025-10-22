@@ -18,10 +18,34 @@ export const ChatSidebar: React.FC = () => {
   const { messages, busy, error } = chat;
   const { provider, model, autopilot } = settings;
   const [input, setInput] = useState('');
+  const [useContext, setUseContext] = useState(true);
 
   const send = async () => {
     if (!input.trim() || busy) return;
-    dispatch(push({ role: 'user', content: input }));
+    
+    let finalPrompt = input;
+    
+    // Auto context: fetch relevant code snippets
+    if (useContext) {
+      try {
+        const root = await window.kirobridge?.workspaceRoot?.();
+        if (root) {
+          const u = new URL("http://127.0.0.1:4455/context/search");
+          u.searchParams.set("root", root);
+          u.searchParams.set("q", input);
+          u.searchParams.set("k", "6");
+          const res = await fetch(u).then(r => r.json());
+          if (res?.packed) {
+            finalPrompt = res.packed + "\n\n### User Request\n" + input;
+          }
+        }
+      } catch (e) {
+        // Context fetch failed, continue with original prompt
+        console.warn('Context fetch failed:', e);
+      }
+    }
+    
+    dispatch(push({ role: 'user', content: input })); // Show original input to user
     dispatch(setBusy(true));
     dispatch(setError(undefined));
     setInput('');
@@ -30,7 +54,7 @@ export const ChatSidebar: React.FC = () => {
       const result = await window.kirobridge?.chatRequest?.({ 
         provider, 
         model, 
-        messages: [{ role:'user', content: input }] 
+        messages: [{ role:'user', content: finalPrompt }] // Send context-enhanced prompt
       });
       if (!result?.ok) throw new Error(result?.error || result?.data?.error || 'chat_failed');
       dispatch(push({ role: 'assistant', content: result.data.content || '' }));
@@ -66,7 +90,7 @@ export const ChatSidebar: React.FC = () => {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div style={{ fontWeight: 600, fontSize: '14px' }}>Chat</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <label style={{ fontSize: '12px', color: 'var(--muted)' }}>
             <input 
               type="checkbox" 
@@ -75,6 +99,15 @@ export const ChatSidebar: React.FC = () => {
               style={{ marginRight: '4px' }}
             />
             Autopilot
+          </label>
+          <label style={{ fontSize: '12px', color: 'var(--muted)' }}>
+            <input 
+              type="checkbox" 
+              checked={useContext} 
+              onChange={e => setUseContext(e.target.checked)}
+              style={{ marginRight: '4px' }}
+            />
+            Auto context
           </label>
         </div>
       </div>

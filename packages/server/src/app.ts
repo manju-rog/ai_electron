@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { chatRouter } from './routes/chat';
 import { specRouter } from './routes/spec';
 import { agentRouter } from './routes/agent';
+import { contextRouter } from './routes/context';
 
 export function createApp() {
   dotenv.config();
@@ -20,6 +21,7 @@ export function createApp() {
   app.use('/chat', chatRouter);
   app.use('/generate/spec', specRouter);
   app.use('/agent', agentRouter);
+  app.use('/context', contextRouter);
 
   return app;
 }

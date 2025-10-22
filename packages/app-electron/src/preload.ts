@@ -30,5 +30,8 @@ contextBridge.exposeInMainWorld('kirobridge', {
   stagingAccept: (rel: string) => ipcRenderer.invoke('staging-accept', rel),
   stagingReject: (rel: string) => ipcRenderer.invoke('staging-reject', rel),
   activityFeed: () => ipcRenderer.invoke('activity-feed') as Promise<{time:string, message:string}[]>,
-  onAgentEvent: (cb: (ev:any, payload:any) => void) => ipcRenderer.on('agent-event', cb)
+  onAgentEvent: (cb: (ev:any, payload:any) => void) => ipcRenderer.on('agent-event', cb),
+
+  // phase 7: context
+  workspaceRoot: () => ipcRenderer.invoke('workspace-root')
 });

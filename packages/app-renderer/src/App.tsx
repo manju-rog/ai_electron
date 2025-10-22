@@ -40,6 +40,8 @@ declare global {
       stagingReject: (rel: string) => Promise<{ ok: boolean; rel: string }>;
       activityFeed: () => Promise<{time:string, message:string}[]>;
       onAgentEvent: (cb: (ev:any, payload:any) => void) => void;
+      // Phase 7: context
+      workspaceRoot: () => Promise<string | null>;
     };
   }
 }
