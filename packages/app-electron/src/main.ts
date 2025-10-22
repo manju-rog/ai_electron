@@ -85,17 +85,20 @@ ipcMain.handle('workspace-open', async () => {
   return { root: workspaceRoot };
 });
 
+const IGNORE = new Set(['.git', 'node_modules', 'dist', 'build', '.next', '.cache']);
+
 async function readTree(dir: string): Promise<any[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
-  const out = await Promise.all(entries.map(async (e: any) => {
-    const abs = path.join(dir, e.name);
-    if (e.isDirectory()) {
-      return { name: e.name, path: path.relative(workspaceRoot!, abs), type: 'dir', children: await readTree(abs) };
-    } else {
-      return { name: e.name, path: path.relative(workspaceRoot!, abs), type: 'file' };
-    }
-  }));
-  // optional: sort dirs first
+  const out = await Promise.all(entries
+    .filter((e: any) => !IGNORE.has(e.name))
+    .map(async (e: any) => {
+      const abs = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        return { name: e.name, path: path.relative(workspaceRoot!, abs), type: 'dir', children: await readTree(abs) };
+      } else {
+        return { name: e.name, path: path.relative(workspaceRoot!, abs), type: 'file' };
+      }
+    }));
   out.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1));
   return out;
 }

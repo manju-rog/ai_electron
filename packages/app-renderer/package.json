@@ -9,9 +9,11 @@
     "preview": "cd ../.. && pnpm exec vite preview --port 5173 --config packages/app-renderer/vite.config.ts"
   },
   "dependencies": {
+    "@reduxjs/toolkit": "^2.9.1",
     "monaco-editor": "^0.54.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-redux": "^9.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.12",

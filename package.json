@@ -10,9 +10,11 @@
     "lint": "echo \"(Add ESLint later)\"",
     "test": "echo \"(Add Jest/Playwright later)\""
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "devDependencies": {
     "concurrently": "^9.0.0",
-    "typescript": "^5.6.3"
+    "typescript": "^5.9.3"
   }
 }

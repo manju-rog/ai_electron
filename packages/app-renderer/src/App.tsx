@@ -2,7 +2,13 @@
 import { LayoutShell } from './ui/LayoutShell';
 import { EditorMonaco } from './ui/EditorMonaco';
 import { FileExplorer } from './ui/FileExplorer';
-import type { FileEntry } from '@kiroclone/shared/src/types';
+import { ChatSidebar } from './ui/ChatSidebar';
+type FileEntry = {
+  name: string;
+  path: string;
+  type: 'file' | 'dir';
+  children?: FileEntry[];
+};
 import { detectEOL, normalizeTo } from './eol';
 
 declare global {
@@ -76,16 +82,7 @@ const App: React.FC = () => {
     </div>
   );
 
-  const right = (
-    <div>
-      <div style={{ fontWeight:700, marginBottom:8 }}>Console</div>
-      <div style={{ fontFamily:'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', fontSize:12, color:'var(--muted)' }}>
-        • Local server: http://127.0.0.1:4455<br/>
-        • Claude/OpenAI: not configured yet<br/>
-        • Hooks/Agents: coming next
-      </div>
-    </div>
-  );
+  const right = <ChatSidebar />;
 
   const center = (
     <div style={{ height:'100%', display:'grid', gridTemplateRows:'40px 1fr 28px' }}>
