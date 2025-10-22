@@ -8,13 +8,33 @@ const md = new MarkdownIt({ html: true, linkify: true, breaks: true });
 type SpecMeta = { name: string; ext: 'md'|'yaml'|'yml' };
 
 function extractTasksJSON(text: string): any[] {
-  const re = /```json\s+tasks\s*([\s\S]*?)```/i;
-  const m = text.match(re);
-  if (!m) return [];
-  try {
-    const arr = JSON.parse(m[1].trim());
-    return Array.isArray(arr) ? arr : [];
-  } catch { return []; }
+  // Find all ```json tasks blocks and merge them
+  const re = /```json\s+tasks\s*([\s\S]*?)```/gi;
+  const matches = [...text.matchAll(re)];
+  
+  if (matches.length === 0) return [];
+  
+  const allTasks: any[] = [];
+  const seenIds = new Set<string>();
+  
+  for (const match of matches) {
+    try {
+      const arr = JSON.parse(match[1].trim());
+      if (Array.isArray(arr)) {
+        for (const task of arr) {
+          const id = String(task.id || task.title || Math.random());
+          if (!seenIds.has(id)) {
+            seenIds.add(id);
+            allTasks.push({ ...task, id });
+          }
+        }
+      }
+    } catch {
+      // Skip invalid JSON blocks
+    }
+  }
+  
+  return allTasks;
 }
 
 export const SpecsPanel: React.FC = () => {
@@ -40,6 +60,11 @@ export const SpecsPanel: React.FC = () => {
     mermaid.initialize({ startOnLoad: false, theme: 'dark' });
     
     const renderMermaid = async () => {
+      if (meta.ext !== 'md') {
+        setPreviewHTML(''); // Skip rendering for non-markdown
+        return;
+      }
+      
       let processedBuf = buf;
       const mermaidMatches = [...buf.matchAll(/```mermaid([\s\S]*?)```/g)];
       
@@ -48,17 +73,25 @@ export const SpecsPanel: React.FC = () => {
         try {
           const result = await mermaid.render(id, match[1].trim());
           processedBuf = processedBuf.replace(match[0], result.svg);
-        } catch (e) {
-          processedBuf = processedBuf.replace(match[0], `<pre>Mermaid Error: ${e}</pre>`);
+        } catch (e: any) {
+          const errorMsg = `<div style="background:#2d1b1b;border:1px solid #d73a49;padding:8px;border-radius:4px;color:#f85149;">
+            <strong>Mermaid Syntax Error:</strong><br/>
+            <code>${e?.message || 'Invalid diagram syntax'}</code>
+          </div>`;
+          processedBuf = processedBuf.replace(match[0], errorMsg);
         }
       }
       
-      const html = md.render(processedBuf);
-      setPreviewHTML(html);
+      try {
+        const html = md.render(processedBuf);
+        setPreviewHTML(html);
+      } catch (e: any) {
+        setPreviewHTML(`<div style="color:#f85149;">Markdown Error: ${e?.message || 'Invalid markdown'}</div>`);
+      }
     };
     
     renderMermaid();
-  }, [buf]);
+  }, [buf, meta.ext]);
 
   // Handle mouse events for resizing
   useEffect(() => {
@@ -95,7 +128,7 @@ export const SpecsPanel: React.FC = () => {
 
   const save = async () => {
     await window.kirobridge?.specWrite?.(meta.name, meta.ext, buf);
-    refreshList();
+    await refreshList(); // Refresh dropdown immediately
   };
 
   const exportMD = async () => {
@@ -115,14 +148,31 @@ export const SpecsPanel: React.FC = () => {
   };
 
   const approve = async () => {
-    const tasks = extractTasksJSON(buf).map((t: any, i: number) => ({
-      id: String(t.id ?? i+1), 
+    const tasks = extractTasksJSON(buf);
+    
+    if (tasks.length === 0) {
+      alert('No tasks found. Add a ```json tasks block with task array to approve.');
+      return;
+    }
+    
+    const processedTasks = tasks.map((t: any, i: number) => ({
+      id: String(t.id ?? `T${i+1}`), 
       title: String(t.title ?? `Task ${i+1}`), 
-      description: String(t.description ?? '')
+      description: String(t.description ?? ''),
+      dependsOn: Array.isArray(t.dependsOn) ? t.dependsOn : []
     }));
-    await window.kirobridge?.tasksWrite?.(JSON.stringify(tasks, null, 2));
-    await window.kirobridge?.jestScaffoldForTasks?.(tasks);
-    alert(`Approved. ${tasks.length} tasks recorded in .kiro/tasks.json and test stubs created.`);
+    
+    try {
+      await window.kirobridge?.tasksWrite?.(JSON.stringify(processedTasks, null, 2));
+      const scaffoldResult = await window.kirobridge?.jestScaffoldForTasks?.(processedTasks);
+      
+      alert(`✅ Approved Successfully!\n\n` +
+            `📋 ${processedTasks.length} tasks → .kiro/tasks.json\n` +
+            `🧪 ${scaffoldResult?.count || processedTasks.length} test stubs → tests/tasks/\n\n` +
+            `Ready for development!`);
+    } catch (e: any) {
+      alert(`❌ Approval failed: ${e?.message || 'Unknown error'}`);
+    }
   };
 
   return (
@@ -250,8 +300,18 @@ export const SpecsPanel: React.FC = () => {
           overflow: 'auto',
           padding: '12px'
         }}>
+          {meta.ext !== 'md' && (
+            <div style={{ 
+              color: '#888', 
+              fontSize: '11px', 
+              marginBottom: '8px',
+              fontStyle: 'italic'
+            }}>
+              YAML Preview: Raw text (switch to .md for rendered preview)
+            </div>
+          )}
           <div 
-            dangerouslySetInnerHTML={{ __html: previewHTML }}
+            dangerouslySetInnerHTML={{ __html: meta.ext === 'md' ? previewHTML : `<pre>${buf}</pre>` }}
             style={{ 
               color: '#e6edf3',
               fontSize: '13px',
