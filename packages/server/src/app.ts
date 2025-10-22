@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { chatRouter } from './routes/chat';
 import { specRouter } from './routes/spec';
+import { agentRouter } from './routes/agent';
 
 export function createApp() {
   dotenv.config();
@@ -18,6 +19,7 @@ export function createApp() {
 
   app.use('/chat', chatRouter);
   app.use('/generate/spec', specRouter);
+  app.use('/agent', agentRouter);
 
   return app;
 }

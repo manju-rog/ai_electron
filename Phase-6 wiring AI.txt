@@ -1,0 +1,523 @@
+Phase-6 time: Agent Hooks + Safe Edits.
+You’ll get background AI that watches saves, proposes multi-line edits, shows clear diffs, and lets you Accept / Reject — Kiro-style, fully local, review-gated.
+
+I’m giving you exact patches. Apply in order, then run your 3 processes and test.
+
+0) Install new deps
+# Server: Zod already present; add nanoid for job ids
+pnpm add -F @kiroclone/server nanoid
+
+# Electron host: chokidar for file watching
+pnpm add -F @kiroclone/app-electron chokidar
+
+1) Server — Agent endpoint that returns patches
+
+We’ll keep AI calls server-side (keys stay private). The server exposes /agent/generate.
+Input: event + file path + file content + optional custom prompt (from hooks.json).
+Output: an array of patches with friendly explanations.
+
+Patch format (simple, robust):
+
+type Patch = {
+  file: string;               // relative to workspace
+  mode: 'replaceWhole'        // (Phase-6 keeps it simple; Phase-7 can add range edits)
+  newContent: string;
+  explanation?: string;       // what changed & why
+};
+
+packages/server/src/routes/agent.ts (new)
+import { Router } from 'express';
+import { z } from 'zod';
+import { resolveProvider } from '../providers';
+import type { ChatRequest } from '../providers/types';
+import { nanoid } from 'nanoid';
+
+export const agentRouter = Router();
+
+const Body = z.object({
+  event: z.enum(['onSave','onCommit','onBuild']),
+  provider: z.enum(['auto','anthropic','openai','mock']).default('auto'),
+  model: z.string().default('claude-3.5-sonnet'),
+  filePath: z.string(),
+  fileContent: z.string(),
+  hooksPrompt: z.string().optional(),
+  steering: z.string().optional()
+});
+
+const SYS = `You are an expert software editor agent.
+Given 1 file's content and a goal, propose concrete multi-line edits.
+
+OUTPUT STRICTLY AS JSON:
+{
+  "patches": [
+    {
+      "file": "<relative path>",
+      "mode": "replaceWhole",
+      "newContent": "<full replacement of the file after your edits>",
+      "explanation": "<what you changed and why>"
+    }
+  ]
+}
+
+Rules:
+- If no changes needed, return {"patches": []}.
+- Keep code formatting.
+- Do not invent new files in Phase-6.
+- Prefer adding JSDoc, small refactors, and unit-test stubs if requested.`;
+
+agentRouter.post('/generate', async (req, res) => {
+  const parsed = Body.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { event, provider: pid, model, filePath, fileContent, hooksPrompt, steering } = parsed.data;
+
+  const user = [
+    `EVENT: ${event}`,
+    steering ? `STEERING:\n${steering}` : null,
+    hooksPrompt ? `GOAL:\n${hooksPrompt.replace('{file}', filePath)}` : 'GOAL:\nImprove quality (JSDoc/tests/refactor) where helpful.',
+    `FILE PATH: ${filePath}`,
+    `FILE CONTENT:\n\n\`\`\`\n${fileContent}\n\`\`\``,
+    `Respond only with the JSON object described in the system message.`
+  ].filter(Boolean).join('\n\n');
+
+  const cr: ChatRequest = {
+    provider: pid,
+    model,
+    messages: [
+      { role: 'system', content: SYS },
+      { role: 'user', content: user }
+    ],
+    maxTokens: 4096
+  };
+
+  try {
+    const out = await resolveProvider(cr).chat(cr);
+    const raw = (out.content || '').trim();
+
+    // Safe parse with fallback
+    let patches: any[] = [];
+    try {
+      const obj = JSON.parse(raw);
+      if (obj && Array.isArray(obj.patches)) patches = obj.patches;
+    } catch {
+      // Fallback: if provider returned plain text, produce no-op to avoid unsafe writes
+      patches = [];
+    }
+
+    // Sanitize shape
+    const normalized = patches
+      .filter(p => p && typeof p.file === 'string' && typeof p.newContent === 'string')
+      .map(p => ({
+        id: nanoid(8),
+        file: String(p.file),
+        mode: 'replaceWhole' as const,
+        newContent: String(p.newContent),
+        explanation: typeof p.explanation === 'string' ? p.explanation : undefined
+      }));
+
+    res.json({ patches: normalized, provider: out.provider, model: out.model });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message ?? 'agent_failed' });
+  }
+});
+
+Mount the route
+
+packages/server/src/app.ts — add:
+
+import { agentRouter } from './routes/agent';
+...
+app.use('/agent', agentRouter);
+
+2) Electron — hooks.json, chokidar watcher, staging, IPC
+
+hooks.json (project root) drives behavior:
+
+{
+  "onSave": {
+    "prompt": "Generate unit tests or JSDoc for {file}, improve code clarity; keep behavior.",
+    "provider": "anthropic",
+    "model": "claude-3.5-sonnet"
+  }
+}
+
+
+On save, we read hooks.json, call /agent/generate, then write staged files under .kiro/staging/<relpath>.
+
+Renderer is notified; the Diffs tab shows each staged change with Accept / Reject.
+
+packages/app-electron/src/preload.ts — add IPC surface
+// (keep existing exports; add these)
+contextBridge.exposeInMainWorld('kirobridge', {
+  ...window['kirobridge'],
+  // Agent / staging & activity
+  agentEnable: () => ipcRenderer.invoke('agent-enable'),
+  agentDisable: () => ipcRenderer.invoke('agent-disable'),
+  stagingList: () => ipcRenderer.invoke('staging-list') as Promise<{file:string, rel:string}[]>,
+  stagingRead: (rel: string) => ipcRenderer.invoke('staging-read', rel) as Promise<{original:string, proposed:string, explanation?:string}>,
+  stagingAccept: (rel: string) => ipcRenderer.invoke('staging-accept', rel),
+  stagingReject: (rel: string) => ipcRenderer.invoke('staging-reject', rel),
+  activityFeed: () => ipcRenderer.invoke('activity-feed') as Promise<{time:string, message:string}[]>,
+  onAgentEvent: (cb: (ev:any, payload:any) => void) => ipcRenderer.on('agent-event', cb)
+});
+
+packages/app-electron/src/main.ts — add watcher + staging logic
+
+Add the following below your Phase-5 handlers. Look for the comment // ---------- Phase 6: Agent hooks ----------.
+
+// ---------- Phase 6: Agent hooks ----------
+import chokidar from 'chokidar';
+import os from 'node:os';
+
+type HookConfig = {
+  onSave?: { prompt: string; provider?: 'auto'|'anthropic'|'openai'|'mock'; model?: string };
+  onCommit?: { prompt: string; provider?: string; model?: string };
+  onBuild?: { prompt: string; provider?: string; model?: string };
+};
+let watcher: chokidar.FSWatcher | null = null;
+let hooks: HookConfig = {};
+let activity: { time:string, message:string }[] = [];
+const pushActivity = (m: string) => {
+  const item = { time: new Date().toISOString(), message: m };
+  activity.unshift(item);
+  activity = activity.slice(0, 200);
+  win?.webContents.send('agent-event', { type: 'activity', item });
+};
+
+async function loadHooks() {
+  if (!workspaceRoot) return;
+  try {
+    const p = path.join(workspaceRoot, 'hooks.json');
+    const txt = await fs.readFile(p, 'utf-8');
+    hooks = JSON.parse(txt);
+    pushActivity('Loaded hooks.json');
+  } catch {
+    hooks = {};
+    pushActivity('No hooks.json (using defaults / no-op).');
+  }
+}
+
+async function ensureStagingDir() {
+  if (!workspaceRoot) return null;
+  const { kiro } = await ensureKiroDirs();
+  const staging = path.join(kiro, 'staging');
+  await fs.mkdir(staging, { recursive: true });
+  return staging;
+}
+
+async function readSteering() {
+  if (!workspaceRoot) return '';
+  try {
+    const p = path.join(workspaceRoot, '.steering.md');
+    return await fs.readFile(p, 'utf-8');
+  } catch { return ''; }
+}
+
+async function triggerOnSave(relPath: string) {
+  if (!workspaceRoot) return;
+  if (!hooks.onSave) return;
+  try {
+    const abs = path.join(workspaceRoot, relPath);
+    const content = await fs.readFile(abs, 'utf-8');
+    const steering = await readSteering();
+    const body = {
+      event: 'onSave',
+      provider: hooks.onSave.provider ?? 'auto',
+      model: hooks.onSave.model ?? 'claude-3.5-sonnet',
+      filePath: relPath.replace(/\\/g,'/'),
+      fileContent: content,
+      hooksPrompt: hooks.onSave.prompt,
+      steering
+    };
+    const r = await fetch('http://127.0.0.1:4455/agent/generate', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data?.error || 'agent_failed');
+
+    const stagingRoot = await ensureStagingDir();
+    const patches = Array.isArray(data.patches) ? data.patches : [];
+    for (const p of patches) {
+      const stagedFile = path.join(stagingRoot!, p.file);
+      await fs.mkdir(path.dirname(stagedFile), { recursive: true });
+      await fs.writeFile(stagedFile + '.explain.txt', p.explanation ?? '', 'utf-8');
+      await fs.writeFile(stagedFile, p.newContent ?? '', 'utf-8');
+    }
+    if (patches.length) {
+      pushActivity(`Agent staged ${patches.length} file(s) for review.`);
+      win?.webContents.send('agent-event', { type: 'staged', count: patches.length });
+    }
+  } catch (e: any) {
+    pushActivity(`Agent error: ${e?.message ?? e}`);
+  }
+}
+
+ipcMain.handle('agent-enable', async () => {
+  if (!workspaceRoot) return { ok:false, error:'no_workspace' };
+  await loadHooks();
+  if (watcher) await watcher.close();
+  watcher = chokidar.watch(workspaceRoot, {
+    ignored: /(^|[\/\\])\..|node_modules|dist|build|\.kiro|\.git/, // ignore dotfolders & build outputs
+    ignoreInitial: true,
+    awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 }
+  });
+  watcher.on('change', async (absPath) => {
+    if (!workspaceRoot) return;
+    const rel = path.relative(workspaceRoot, absPath);
+    // When our own "workspace-write" saves a file, this will also fire. That's good.
+    triggerOnSave(rel);
+  });
+  pushActivity('Agent watcher enabled.');
+  return { ok: true };
+});
+ipcMain.handle('agent-disable', async () => {
+  if (watcher) { await watcher.close(); watcher = null; }
+  pushActivity('Agent watcher disabled.');
+  return { ok: true };
+});
+
+// Staging management
+ipcMain.handle('staging-list', async () => {
+  if (!workspaceRoot) return [];
+  const stagingRoot = await ensureStagingDir();
+  const results: {file:string, rel:string}[] = [];
+  async function walk(dir: string) {
+    const ents = await fs.readdir(dir, { withFileTypes: true });
+    for (const e of ents) {
+      const ab = path.join(dir, e.name);
+      if (e.isDirectory()) await walk(ab);
+      else if (!e.name.endsWith('.explain.txt')) {
+        const rel = path.relative(stagingRoot!, ab);
+        results.push({ file: rel, rel });
+      }
+    }
+  }
+  await walk(stagingRoot!);
+  return results.sort((a,b) => a.file.localeCompare(b.file));
+});
+
+ipcMain.handle('staging-read', async (_e, rel: string) => {
+  if (!workspaceRoot) return null;
+  const stagingRoot = await ensureStagingDir();
+  const staged = path.join(stagingRoot!, rel);
+  const explain = staged + '.explain.txt';
+  const originalAbs = path.join(workspaceRoot, rel);
+  let original = '';
+  try { original = await fs.readFile(originalAbs, 'utf-8'); } catch {}
+  const proposed = await fs.readFile(staged, 'utf-8');
+  let explanation = '';
+  try { explanation = await fs.readFile(explain, 'utf-8'); } catch {}
+  return { original, proposed, explanation };
+});
+
+ipcMain.handle('staging-accept', async (_e, rel: string) => {
+  if (!workspaceRoot) return null;
+  const stagingRoot = await ensureStagingDir();
+  const staged = path.join(stagingRoot!, rel);
+  const data = await fs.readFile(staged, 'utf-8');
+  const target = path.join(workspaceRoot, rel);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(target, data, 'utf-8');
+  // Cleanup
+  await fs.rm(staged, { force:true });
+  await fs.rm(staged + '.explain.txt', { force:true });
+  pushActivity(`Accepted: ${rel}`);
+  return { ok: true, rel };
+});
+
+ipcMain.handle('staging-reject', async (_e, rel: string) => {
+  if (!workspaceRoot) return null;
+  const stagingRoot = await ensureStagingDir();
+  const staged = path.join(stagingRoot!, rel);
+  await fs.rm(staged, { force:true });
+  await fs.rm(staged + '.explain.txt', { force:true });
+  pushActivity(`Rejected: ${rel}`);
+  return { ok: true, rel };
+});
+
+ipcMain.handle('activity-feed', async () => activity);
+
+
+Note: we didn’t block your normal save flow. Agent suggestions land in .kiro/staging/… until you accept.
+
+3) Renderer — Diffs panel (review + accept/reject) + Agent toggle
+
+We add a new right-side tab “Diffs”, show staged files, preview each in a Monaco diff editor, and buttons to Accept / Reject. Also a simple Enable Agent toggle.
+
+packages/app-renderer/src/ui/DiffsPanel.tsx (new)
+import React, { useEffect, useState } from 'react';
+import { EditorMonaco } from './EditorMonaco';
+
+type StagedItem = { file: string; rel: string };
+
+export const DiffsPanel: React.FC = () => {
+  const [items, setItems] = useState<StagedItem[]>([]);
+  const [sel, setSel] = useState<string | null>(null);
+  const [original, setOriginal] = useState('');
+  const [proposed, setProposed] = useState('');
+  const [explain, setExplain] = useState('');
+
+  const refresh = async () => {
+    const list = await window.kirobridge?.stagingList?.();
+    setItems(list || []);
+    if (list && list.length && !sel) setSel(list[0].rel);
+  };
+
+  useEffect(() => {
+    refresh();
+    window.kirobridge?.onAgentEvent?.((_e: any, payload: any) => {
+      if (payload?.type === 'staged') refresh();
+    });
+  }, []);
+
+  useEffect(() => {
+    const run = async () => {
+      if (!sel) return;
+      const data = await window.kirobridge?.stagingRead?.(sel);
+      setOriginal(data?.original ?? '');
+      setProposed(data?.proposed ?? '');
+      setExplain(data?.explanation ?? '');
+    };
+    run();
+  }, [sel]);
+
+  const accept = async () => {
+    if (!sel) return;
+    await window.kirobridge?.stagingAccept?.(sel);
+    await refresh(); setSel(null); setOriginal(''); setProposed(''); setExplain('');
+  };
+  const reject = async () => {
+    if (!sel) return;
+    await window.kirobridge?.stagingReject?.(sel);
+    await refresh(); setSel(null); setOriginal(''); setProposed(''); setExplain('');
+  };
+
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'240px 1fr', gap:8, height:'100%' }}>
+      <div style={{ borderRight:'1px solid #222', overflow:'auto' }}>
+        <div style={{ display:'flex', gap:6, padding:8 }}>
+          <button onClick={() => window.kirobridge?.agentEnable?.()}>Enable Agent</button>
+          <button onClick={() => window.kirobridge?.agentDisable?.()}>Disable</button>
+        </div>
+        <div style={{ padding:'0 8px', color:'var(--muted)' }}>Staged changes</div>
+        <ul style={{ listStyle:'none', margin:0, padding:0 }}>
+          {items.length === 0 && <li style={{ padding:8, color:'var(--muted)' }}>No staged changes</li>}
+          {items.map(it => (
+            <li key={it.rel}>
+              <button
+                onClick={() => setSel(it.rel)}
+                style={{
+                  width:'100%', textAlign:'left', padding:'8px 10px',
+                  background: sel===it.rel ? '#1f6feb44':'transparent',
+                  color:'var(--text)', border:'none'
+                }}
+              >
+                {it.rel}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div style={{ minHeight:0, display:'grid', gridTemplateRows:'auto 1fr auto', gap:8 }}>
+        <div style={{ padding:'6px 8px', background:'var(--panel)', borderBottom:'1px solid #222' }}>
+          {sel ? sel : 'Select a change'}
+        </div>
+        <div style={{ minHeight:0 }}>
+          <EditorMonaco value={proposed} onChange={() => {}} language={'typescript'} original={original} diff />
+        </div>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'4px 8px' }}>
+          <div style={{ fontSize:12, color:'var(--muted)' }}>{explain}</div>
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={reject} disabled={!sel}>Reject</button>
+            <button onClick={accept} disabled={!sel} style={{ background:'#238636', color:'white' }}>Accept</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+EditorMonaco needs to support diff mode (original vs modified). If yours doesn’t yet, add the prop handling:
+
+packages/app-renderer/src/ui/EditorMonaco.tsx (augment)
+// add props: original?: string; diff?: boolean
+type Props = { value: string; onChange: (v: string) => void; language?: string; original?: string; diff?: boolean };
+...
+// when diff===true, render monaco.editor.createDiffEditor and set models accordingly
+
+
+(If your component is a stub, simplest path: when diff is true, render two side-by-side editors — it’s fine for Phase-6; upgrade to Monaco diff later.)
+
+4) Right-side tabs — add Diffs tab
+packages/app-renderer/src/ui/RightTabs.tsx — add tab
+import { DiffsPanel } from './DiffsPanel';
+...
+const [tab, setTab] = useState<'chat'|'specs'|'diffs'>('chat');
+...
+{tabBtn('diffs','Diffs')}
+...
+{tab === 'diffs' ? <DiffsPanel /> : tab === 'specs' ? <SpecsPanel /> : <ChatSidebar />}
+
+5) hooks.json — minimal config in your workspace root
+
+Create <your workspace>/hooks.json:
+
+{
+  "onSave": {
+    "prompt": "Review {file}. If it's code, improve clarity with concise JSDoc and small refactors; if it's a test, strengthen assertions. Keep behavior. Output a single replaceWhole patch.",
+    "provider": "anthropic",
+    "model": "claude-3.5-sonnet"
+  }
+}
+
+
+Optional steering file for global rules:
+
+<workspace>/.steering.md
+
+- Use TypeScript strict mode.
+- Prefer async/await.
+- Test framework: Jest.
+- Commit style: Conventional Commits (feat:, fix:, etc.)
+
+6) Run & test
+
+Start your usual trio:
+
+pnpm --filter @kiroclone/server dev
+pnpm --filter @kiroclone/app-renderer dev
+pnpm --filter @kiroclone/app-electron dev
+
+
+In the app:
+
+Open Folder (your workspace with hooks.json).
+
+Right → Diffs tab → click Enable Agent (you’ll see “Agent watcher enabled” in Activity).
+
+Edit any file → Save.
+
+Wait ~1–3s → Diffs shows staged change(s).
+
+Click a file → diff view. Read the explanation (right footer).
+
+Accept writes to the actual file. Reject discards the staged edit.
+
+No keys? The server falls back to the Mock provider so nothing crashes (you’ll see either empty patches or a trivial diff).
+
+What you just gained (Phase-6 complete)
+
+Background AI on file saves (chokidar)
+
+Server-side agent creates multi-line patches with explanations
+
+Staging area .kiro/staging/* (safe)
+
+Diffs panel with Accept / Reject gates
+
+Activity feed of agent actions
+
+This is the core “AI edits code, shows what it’s doing” loop, Kiro-style, with safety.

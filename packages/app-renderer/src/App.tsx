@@ -31,6 +31,15 @@ declare global {
       specExportPDF: (name: string, html: string) => Promise<{ path:string }>;
       tasksWrite: (json: string) => Promise<{ path:string, count:number }>;
       jestScaffoldForTasks: (tasks: {id:string,title:string,description?:string}[]) => Promise<any>;
+      // Phase 6: agent hooks
+      agentEnable: () => Promise<{ ok: boolean; error?: string }>;
+      agentDisable: () => Promise<{ ok: boolean }>;
+      stagingList: () => Promise<{file:string, rel:string}[]>;
+      stagingRead: (rel: string) => Promise<{original:string, proposed:string, explanation?:string}>;
+      stagingAccept: (rel: string) => Promise<{ ok: boolean; rel: string }>;
+      stagingReject: (rel: string) => Promise<{ ok: boolean; rel: string }>;
+      activityFeed: () => Promise<{time:string, message:string}[]>;
+      onAgentEvent: (cb: (ev:any, payload:any) => void) => void;
     };
   }
 }

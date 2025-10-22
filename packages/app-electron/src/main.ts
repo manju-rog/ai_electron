@@ -263,3 +263,177 @@ describe(${JSON.stringify(t.title)}, () => {
   }));
   return { count: tasks.length, dir: path.relative(workspaceRoot!, testsRoot) };
 });
+
+// ---------- Phase 6: Agent hooks ----------
+import * as chokidar from 'chokidar';
+
+type HookConfig = {
+  onSave?: { prompt: string; provider?: 'auto'|'anthropic'|'openai'|'mock'; model?: string };
+  onCommit?: { prompt: string; provider?: string; model?: string };
+  onBuild?: { prompt: string; provider?: string; model?: string };
+};
+let watcher: chokidar.FSWatcher | null = null;
+let hooks: HookConfig = {};
+let activity: { time:string, message:string }[] = [];
+const pushActivity = (m: string) => {
+  const item = { time: new Date().toISOString(), message: m };
+  activity.unshift(item);
+  activity = activity.slice(0, 200);
+  win?.webContents.send('agent-event', { type: 'activity', item });
+};
+
+async function loadHooks() {
+  if (!workspaceRoot) return;
+  try {
+    const p = path.join(workspaceRoot, 'hooks.json');
+    const txt = await fs.readFile(p, 'utf-8');
+    hooks = JSON.parse(txt);
+    pushActivity('Loaded hooks.json');
+  } catch {
+    hooks = {};
+    pushActivity('No hooks.json (using defaults / no-op).');
+  }
+}
+
+async function ensureStagingDir() {
+  if (!workspaceRoot) return null;
+  const { kiro } = await ensureKiroDirs();
+  const staging = path.join(kiro, 'staging');
+  await fs.mkdir(staging, { recursive: true });
+  return staging;
+}
+
+async function readSteering() {
+  if (!workspaceRoot) return '';
+  try {
+    const p = path.join(workspaceRoot, '.steering.md');
+    return await fs.readFile(p, 'utf-8');
+  } catch { return ''; }
+}
+
+async function triggerOnSave(relPath: string) {
+  if (!workspaceRoot) return;
+  if (!hooks.onSave) return;
+  try {
+    const abs = path.join(workspaceRoot, relPath);
+    const content = await fs.readFile(abs, 'utf-8');
+    const steering = await readSteering();
+    const body = {
+      event: 'onSave',
+      provider: hooks.onSave.provider ?? 'auto',
+      model: hooks.onSave.model ?? 'claude-3.5-sonnet',
+      filePath: relPath.replace(/\\/g,'/'),
+      fileContent: content,
+      hooksPrompt: hooks.onSave.prompt,
+      steering
+    };
+    const fetch = require('node-fetch');
+    const r = await fetch('http://127.0.0.1:4455/agent/generate', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data?.error || 'agent_failed');
+
+    const stagingRoot = await ensureStagingDir();
+    const patches = Array.isArray(data.patches) ? data.patches : [];
+    for (const p of patches) {
+      const stagedFile = path.join(stagingRoot!, p.file);
+      await fs.mkdir(path.dirname(stagedFile), { recursive: true });
+      await fs.writeFile(stagedFile + '.explain.txt', p.explanation ?? '', 'utf-8');
+      await fs.writeFile(stagedFile, p.newContent ?? '', 'utf-8');
+    }
+    if (patches.length) {
+      pushActivity(`Agent staged ${patches.length} file(s) for review.`);
+      win?.webContents.send('agent-event', { type: 'staged', count: patches.length });
+    }
+  } catch (e: any) {
+    pushActivity(`Agent error: ${e?.message ?? e}`);
+  }
+}
+
+ipcMain.handle('agent-enable', async () => {
+  if (!workspaceRoot) return { ok:false, error:'no_workspace' };
+  await loadHooks();
+  if (watcher) await watcher.close();
+  watcher = chokidar.watch(workspaceRoot, {
+    ignored: /(^|[\/\\])\..|node_modules|dist|build|\.kiro|\.git/, // ignore dotfolders & build outputs
+    ignoreInitial: true,
+    awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 }
+  });
+  watcher.on('change', async (absPath: string) => {
+    if (!workspaceRoot) return;
+    const rel = path.relative(workspaceRoot, absPath);
+    // When our own "workspace-write" saves a file, this will also fire. That's good.
+    triggerOnSave(rel);
+  });
+  pushActivity('Agent watcher enabled.');
+  return { ok: true };
+});
+ipcMain.handle('agent-disable', async () => {
+  if (watcher) { await watcher.close(); watcher = null; }
+  pushActivity('Agent watcher disabled.');
+  return { ok: true };
+});
+
+// Staging management
+ipcMain.handle('staging-list', async () => {
+  if (!workspaceRoot) return [];
+  const stagingRoot = await ensureStagingDir();
+  const results: {file:string, rel:string}[] = [];
+  async function walk(dir: string) {
+    const ents = await fs.readdir(dir, { withFileTypes: true });
+    for (const e of ents) {
+      const ab = path.join(dir, e.name);
+      if (e.isDirectory()) await walk(ab);
+      else if (!e.name.endsWith('.explain.txt')) {
+        const rel = path.relative(stagingRoot!, ab);
+        results.push({ file: rel, rel });
+      }
+    }
+  }
+  await walk(stagingRoot!);
+  return results.sort((a,b) => a.file.localeCompare(b.file));
+});
+
+ipcMain.handle('staging-read', async (_e: any, rel: string) => {
+  if (!workspaceRoot) return null;
+  const stagingRoot = await ensureStagingDir();
+  const staged = path.join(stagingRoot!, rel);
+  const explain = staged + '.explain.txt';
+  const originalAbs = path.join(workspaceRoot, rel);
+  let original = '';
+  try { original = await fs.readFile(originalAbs, 'utf-8'); } catch {}
+  const proposed = await fs.readFile(staged, 'utf-8');
+  let explanation = '';
+  try { explanation = await fs.readFile(explain, 'utf-8'); } catch {}
+  return { original, proposed, explanation };
+});
+
+ipcMain.handle('staging-accept', async (_e: any, rel: string) => {
+  if (!workspaceRoot) return null;
+  const stagingRoot = await ensureStagingDir();
+  const staged = path.join(stagingRoot!, rel);
+  const data = await fs.readFile(staged, 'utf-8');
+  const target = path.join(workspaceRoot, rel);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(target, data, 'utf-8');
+  // Cleanup
+  await fs.rm(staged, { force:true });
+  await fs.rm(staged + '.explain.txt', { force:true });
+  pushActivity(`Accepted: ${rel}`);
+  return { ok: true, rel };
+});
+
+ipcMain.handle('staging-reject', async (_e: any, rel: string) => {
+  if (!workspaceRoot) return null;
+  const stagingRoot = await ensureStagingDir();
+  const staged = path.join(stagingRoot!, rel);
+  await fs.rm(staged, { force:true });
+  await fs.rm(staged + '.explain.txt', { force:true });
+  pushActivity(`Rejected: ${rel}`);
+  return { ok: true, rel };
+});
+
+ipcMain.handle('activity-feed', async () => activity);

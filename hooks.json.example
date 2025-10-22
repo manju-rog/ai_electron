@@ -1,0 +1,7 @@
+{
+  "onSave": {
+    "prompt": "Review {file}. If it's code, improve clarity with concise JSDoc and small refactors; if it's a test, strengthen assertions. Keep behavior. Output a single replaceWhole patch.",
+    "provider": "anthropic",
+    "model": "claude-3.5-sonnet"
+  }
+}

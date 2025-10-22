@@ -1,0 +1,9 @@
+# Steering Rules
+
+- Use TypeScript strict mode
+- Prefer async/await over Promises
+- Test framework: Jest
+- Commit style: Conventional Commits (feat:, fix:, etc.)
+- Add JSDoc comments for public functions
+- Keep functions small and focused
+- Use meaningful variable names

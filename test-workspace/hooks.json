@@ -1,0 +1,7 @@
+{
+  "onSave": {
+    "prompt": "Review {file}. Add JSDoc comments and improve TypeScript typing if needed. Keep behavior unchanged. Output a single replaceWhole patch.",
+    "provider": "anthropic",
+    "model": "claude-sonnet-4"
+  }
+}

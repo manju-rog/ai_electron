@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { ChatSidebar } from './ChatSidebar';
 import { SpecsPanel } from './SpecsPanel';
+import { DiffsPanel } from './DiffsPanel';
 
 export const RightTabs: React.FC = () => {
-  const [tab, setTab] = useState<'chat'|'specs'>('chat');
+  const [tab, setTab] = useState<'chat'|'specs'|'diffs'>('chat');
   
-  const tabBtn = (k:'chat'|'specs', label:string) =>
+  const tabBtn = (k:'chat'|'specs'|'diffs', label:string) =>
     <button 
       onClick={() => setTab(k)} 
       style={{ 
@@ -32,9 +33,10 @@ export const RightTabs: React.FC = () => {
       }}>
         {tabBtn('chat','Chat')}
         {tabBtn('specs','Specs')}
+        {tabBtn('diffs','Diffs')}
       </div>
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {tab === 'chat' ? <ChatSidebar /> : <SpecsPanel />}
+        {tab === 'diffs' ? <DiffsPanel /> : tab === 'specs' ? <SpecsPanel /> : <ChatSidebar />}
       </div>
     </div>
   );
