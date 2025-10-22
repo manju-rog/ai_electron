@@ -1,12 +1,18 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { LayoutShell } from './ui/LayoutShell';
 import { EditorMonaco } from './ui/EditorMonaco';
+import { FileExplorer } from './ui/FileExplorer';
+import type { FileEntry } from '@kiroclone/shared/src/types';
+import { detectEOL, normalizeTo } from './eol';
 
 declare global {
   interface Window {
     kirobridge?: {
       pingServer: () => Promise<{ ok: boolean }>;
-      fileOpen: () => Promise<{ path: string; content: string } | null>;
+      openFolder: () => Promise<{ root: string } | null>;
+      readDirTree: () => Promise<FileEntry[]>;
+      readFileByPath: (relPath: string) => Promise<{ path: string; content: string } | null>;
+      writeFileByPath: (relPath: string, content: string) => Promise<{ path: string } | null>;
       fileSaveAs: (content: string) => Promise<{ path: string } | null>;
     };
   }
@@ -14,76 +20,92 @@ declare global {
 
 const App: React.FC = () => {
   const [serverOk, setServerOk] = useState<boolean | null>(null);
+  const [tree, setTree] = useState<FileEntry[]>([]);
   const [currentPath, setCurrentPath] = useState<string | null>(null);
-  const [buffer, setBuffer] = useState<string>(
-`// KiroClone Phase 2
-// Monaco is live. Use "Open" to load a file, "Save As" to write a new copy.
-`);
+  const [buffer, setBuffer] = useState<string>(`// KiroClone Phase 3\n// Open a folder to see files on the left.`);
+  const [currentEOL, setCurrentEOL] = useState<'\n' | '\r\n'>('\n');
 
   useEffect(() => {
-    const ping = async () => {
+    (async () => {
       try {
         const r = await fetch('http://127.0.0.1:4455/health');
         setServerOk(r.ok);
       } catch { setServerOk(false); }
-    };
-    ping();
+    })();
   }, []);
 
-  const openFile = async () => {
-    console.log('openFile clicked, kirobridge:', window.kirobridge);
-    if (!window.kirobridge?.fileOpen) {
-      console.error('kirobridge.fileOpen not available');
-      return;
-    }
-    try {
-      const res = await window.kirobridge.fileOpen();
-      console.log('fileOpen result:', res);
-      if (res) {
-        setCurrentPath(res.path);
-        setBuffer(res.content);
-      }
-    } catch (error) {
-      console.error('Error opening file:', error);
-    }
+  const refreshTree = async () => {
+    const t = await window.kirobridge?.readDirTree?.();
+    setTree(t ?? []);
+  };
+
+  const openFolder = async () => {
+    const res = await window.kirobridge?.openFolder?.();
+    if (res) { await refreshTree(); }
+  };
+
+  const openRel = async (relPath: string) => {
+    const res = await window.kirobridge?.readFileByPath?.(relPath);
+    if (!res) return;
+    setCurrentPath(res.path);
+    setCurrentEOL(detectEOL(res.content));
+    setBuffer(res.content);
+  };
+
+  const save = async () => {
+    if (!currentPath) return;
+    const content = normalizeTo(buffer, currentEOL);
+    await window.kirobridge?.writeFileByPath?.(currentPath, content);
   };
 
   const saveAs = async () => {
-    console.log('saveAs clicked, kirobridge:', window.kirobridge);
-    if (!window.kirobridge?.fileSaveAs) {
-      console.error('kirobridge.fileSaveAs not available');
-      return;
-    }
-    try {
-      const res = await window.kirobridge.fileSaveAs(buffer);
-      console.log('fileSaveAs result:', res);
-      if (res) setCurrentPath(res.path);
-    } catch (error) {
-      console.error('Error saving file:', error);
-    }
+    const res = await window.kirobridge?.fileSaveAs?.(buffer);
+    if (res) setCurrentPath(res.path);
   };
 
-  return (
-    <LayoutShell
-      center={
-        <div style={{ height: '100%', display:'grid', gridTemplateRows:'40px 1fr 28px' }}>
-          <div style={{ padding:'6px 10px', background:'var(--panel)', borderBottom:'1px solid #222', display:'flex', gap:8, alignItems:'center' }}>
-            <button onClick={openFile}>Open</button>
-            <button onClick={saveAs}>Save As</button>
-            <div style={{ color:'var(--muted)', marginLeft:12, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-              {currentPath ?? 'Untitled'}
-            </div>
-          </div>
-          <div>
-            <EditorMonaco value={buffer} onChange={setBuffer} language="typescript" />
-          </div>
-          <div style={{ padding:'4px 8px', fontSize:12, color: serverOk ? '#3fb950' : '#f85149', background:'var(--panel)', borderTop:'1px solid #222' }}>
-            {serverOk === null ? 'Checking server…' : serverOk ? 'Local server OK' : 'Local server not reachable'}
-          </div>
-        </div>
-      }
-    />
+  const left = (
+    <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
+      <div style={{ padding:12, fontWeight:700 }}>KiroClone</div>
+      <div style={{ padding:'0 12px 8px' }}>
+        <button onClick={openFolder}>Open Folder</button>
+      </div>
+      <div style={{ padding:'0 8px', color:'var(--muted)' }}>Explorer</div>
+      <div style={{ flex:1, overflow:'auto', padding:'8px' }}>
+        <FileExplorer tree={tree} onOpen={openRel} />
+      </div>
+    </div>
   );
+
+  const right = (
+    <div>
+      <div style={{ fontWeight:700, marginBottom:8 }}>Console</div>
+      <div style={{ fontFamily:'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', fontSize:12, color:'var(--muted)' }}>
+        • Local server: http://127.0.0.1:4455<br/>
+        • Claude/OpenAI: not configured yet<br/>
+        • Hooks/Agents: coming next
+      </div>
+    </div>
+  );
+
+  const center = (
+    <div style={{ height:'100%', display:'grid', gridTemplateRows:'40px 1fr 28px' }}>
+      <div style={{ padding:'6px 10px', background:'var(--panel)', borderBottom:'1px solid #222', display:'flex', gap:8, alignItems:'center' }}>
+        <button onClick={save} disabled={!currentPath}>Save</button>
+        <button onClick={saveAs}>Save As</button>
+        <div style={{ color:'var(--muted)', marginLeft:12, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+          {currentPath ?? 'Untitled'}
+        </div>
+      </div>
+      <div>
+        <EditorMonaco value={buffer} onChange={setBuffer} language="typescript" />
+      </div>
+      <div style={{ padding:'4px 8px', fontSize:12, color: serverOk ? '#3fb950' : '#f85149', background:'var(--panel)', borderTop:'1px solid #222' }}>
+        {serverOk === null ? 'Checking server…' : serverOk ? 'Local server OK' : 'Local server not reachable'}
+      </div>
+    </div>
+  );
+
+  return <LayoutShell left={left} center={center} right={right} />;
 };
 
 export default App;

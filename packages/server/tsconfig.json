@@ -5,7 +5,8 @@
     "module": "ESNext",
     "target": "ES2022",
     "moduleResolution": "Bundler",
-    "types": ["node"]
+    "esModuleInterop": true,
+    "types": ["node", "jest"]
   },
   "include": ["src/**/*.ts"]
 }

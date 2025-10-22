@@ -1,17 +1,15 @@
 ﻿const { contextBridge, ipcRenderer } = require('electron');
 
-console.log('Preload script loading...');
-
 contextBridge.exposeInMainWorld('kirobridge', {
   pingServer: () => ipcRenderer.invoke('ping-server'),
-  fileOpen: async () => {
-    console.log('fileOpen called from renderer');
-    return ipcRenderer.invoke('file-open');
-  },
-  fileSaveAs: async (content: string) => {
-    console.log('fileSaveAs called from renderer');
-    return ipcRenderer.invoke('file-save-as', content);
-  }
-});
 
-console.log('Preload script loaded, kirobridge exposed');
+  // Workspace
+  openFolder: () => ipcRenderer.invoke('workspace-open'),                     // returns {root: string} | null
+  readDirTree: () => ipcRenderer.invoke('workspace-read-tree'),               // returns FileEntry[]
+  readFileByPath: (relPath: string) => ipcRenderer.invoke('workspace-read', relPath) as Promise<{ path: string; content: string } | null>,
+  writeFileByPath: (relPath: string, content: string) => ipcRenderer.invoke('workspace-write', relPath, content) as Promise<{ path: string } | null>,
+
+  // Single-file dialogs from Phase-2 (still useful)
+  fileOpen: () => ipcRenderer.invoke('file-open'),
+  fileSaveAs: (content: string) => ipcRenderer.invoke('file-save-as', content),
+});

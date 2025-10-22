@@ -2,11 +2,15 @@
 const path = require('node:path');
 const fs = require('node:fs/promises');
 
-// __dirname is available in CommonJS
-
 try { if (require('electron-squirrel-startup')) app.quit(); } catch {}
 
 let win: any = null;
+let workspaceRoot: string | null = null;
+
+const isInside = (base: string, target: string) => {
+  const rel = path.relative(base, target);
+  return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+};
 
 const createWindow = async () => {
   win = new BrowserWindow({
@@ -19,32 +23,13 @@ const createWindow = async () => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: true
     }
   });
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173';
-  if (devServerUrl) {
-    await win.loadURL(devServerUrl);
-    win.webContents.openDevTools({ mode: 'detach' });
-  } else {
-    await win.loadFile(path.join(__dirname, '..', '..', 'app-renderer', 'dist', 'index.html'));
-  }
-
-  // Disable CSP for development
-  win.webContents.session.webRequest.onHeadersReceived((details: any, callback: any) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': ['default-src * \'unsafe-inline\' \'unsafe-eval\'; script-src * \'unsafe-inline\' \'unsafe-eval\'; connect-src * \'unsafe-inline\'; img-src * data: blob: \'unsafe-inline\'; frame-src *; style-src * \'unsafe-inline\';']
-      }
-    });
-  });
-
-  win.webContents.setWindowOpenHandler(({ url }: any) => {
-    shell.openExternal(url);
-    return { action: 'deny' };
-  });
+  await win.loadURL(devServerUrl);
+  win.webContents.setWindowOpenHandler(({ url }: any) => { shell.openExternal(url); return { action: 'deny' }; });
 };
 
 app.on('ready', createWindow);
@@ -90,4 +75,48 @@ ipcMain.handle('file-save-as', async (_e: any, content: string) => {
     console.error('Error in file-save-as handler:', error);
     return null;
   }
+});
+
+// --- Phase-3 workspace APIs ---
+ipcMain.handle('workspace-open', async () => {
+  const result = await dialog.showOpenDialog({ title: 'Open Folder', properties: ['openDirectory'] });
+  if (result.canceled || !result.filePaths[0]) return null;
+  workspaceRoot = path.normalize(result.filePaths[0]);
+  return { root: workspaceRoot };
+});
+
+async function readTree(dir: string): Promise<any[]> {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const out = await Promise.all(entries.map(async (e: any) => {
+    const abs = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      return { name: e.name, path: path.relative(workspaceRoot!, abs), type: 'dir', children: await readTree(abs) };
+    } else {
+      return { name: e.name, path: path.relative(workspaceRoot!, abs), type: 'file' };
+    }
+  }));
+  // optional: sort dirs first
+  out.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1));
+  return out;
+}
+
+ipcMain.handle('workspace-read-tree', async () => {
+  if (!workspaceRoot) return [];
+  return readTree(workspaceRoot);
+});
+
+ipcMain.handle('workspace-read', async (_e: any, relPath: string) => {
+  if (!workspaceRoot) return null;
+  const abs = path.normalize(path.join(workspaceRoot, relPath));
+  if (!isInside(workspaceRoot, abs)) return null;
+  const content = await fs.readFile(abs, 'utf-8');
+  return { path: relPath, content };
+});
+
+ipcMain.handle('workspace-write', async (_e: any, relPath: string, content: string) => {
+  if (!workspaceRoot) return null;
+  const abs = path.normalize(path.join(workspaceRoot, relPath));
+  if (!isInside(workspaceRoot, abs)) return null;
+  await fs.writeFile(abs, content ?? '', 'utf-8');
+  return { path: relPath };
 });
