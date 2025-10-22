@@ -2,7 +2,7 @@
 import { LayoutShell } from './ui/LayoutShell';
 import { EditorMonaco } from './ui/EditorMonaco';
 import { FileExplorer } from './ui/FileExplorer';
-import { ChatSidebar } from './ui/ChatSidebar';
+import { RightTabs } from './ui/RightTabs';
 type FileEntry = {
   name: string;
   path: string;
@@ -22,6 +22,15 @@ declare global {
       readFileByPath: (relPath: string) => Promise<{ path: string; content: string } | null>;
       writeFileByPath: (relPath: string, content: string) => Promise<{ path: string } | null>;
       fileSaveAs: (content: string) => Promise<{ path: string } | null>;
+      // Phase 5: specs
+      kiroEnsure: () => Promise<{ kiro: string; specs: string } | null>;
+      specsList: () => Promise<string[]>;
+      specRead: (name: string) => Promise<{name:string, ext:string, content:string}|null>;
+      specWrite: (name: string, ext: 'md'|'yaml'|'yml', content: string) => Promise<{ path:string }>;
+      specExportMarkdown: (name: string, content: string) => Promise<{ path:string }>;
+      specExportPDF: (name: string, html: string) => Promise<{ path:string }>;
+      tasksWrite: (json: string) => Promise<{ path:string, count:number }>;
+      jestScaffoldForTasks: (tasks: {id:string,title:string,description?:string}[]) => Promise<any>;
     };
   }
 }
@@ -84,7 +93,7 @@ const App: React.FC = () => {
     </div>
   );
 
-  const right = <ChatSidebar />;
+  const right = <RightTabs />;
 
   const center = (
     <div style={{ height:'100%', display:'grid', gridTemplateRows:'40px 1fr 28px' }}>

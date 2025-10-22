@@ -1,19 +1,24 @@
-﻿const { contextBridge, ipcRenderer } = require('electron');
+﻿import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('kirobridge', {
+  // phase 2/3
   pingServer: () => ipcRenderer.invoke('ping-server'),
-  
-  // AI Chat endpoints
   chatRequest: (requestBody: any) => ipcRenderer.invoke('chat-request', requestBody),
   specRequest: (requestBody: any) => ipcRenderer.invoke('spec-request', requestBody),
-
-  // Workspace
-  openFolder: () => ipcRenderer.invoke('workspace-open'),                     // returns {root: string} | null
-  readDirTree: () => ipcRenderer.invoke('workspace-read-tree'),               // returns FileEntry[]
-  readFileByPath: (relPath: string) => ipcRenderer.invoke('workspace-read', relPath) as Promise<{ path: string; content: string } | null>,
-  writeFileByPath: (relPath: string, content: string) => ipcRenderer.invoke('workspace-write', relPath, content) as Promise<{ path: string } | null>,
-
-  // Single-file dialogs from Phase-2 (still useful)
+  openFolder: () => ipcRenderer.invoke('workspace-open'),
+  readDirTree: () => ipcRenderer.invoke('workspace-read-tree'),
+  readFileByPath: (relPath: string) => ipcRenderer.invoke('workspace-read', relPath),
+  writeFileByPath: (relPath: string, content: string) => ipcRenderer.invoke('workspace-write', relPath, content),
   fileOpen: () => ipcRenderer.invoke('file-open'),
   fileSaveAs: (content: string) => ipcRenderer.invoke('file-save-as', content),
+
+  // phase 5: specs
+  kiroEnsure: () => ipcRenderer.invoke('kiro-ensure-dirs'),                       // {root, specsDir}
+  specsList: () => ipcRenderer.invoke('specs-list') as Promise<string[]>,         // names WITHOUT extension
+  specRead: (name: string) => ipcRenderer.invoke('spec-read', name) as Promise<{name:string, ext:string, content:string}|null>,
+  specWrite: (name: string, ext: 'md'|'yaml'|'yml', content: string) => ipcRenderer.invoke('spec-write', name, ext, content) as Promise<{ path:string }>,
+  specExportMarkdown: (name: string, content: string) => ipcRenderer.invoke('spec-export-md', name, content) as Promise<{ path:string }>,
+  specExportPDF: (name: string, html: string) => ipcRenderer.invoke('spec-export-pdf', name, html) as Promise<{ path:string }>,
+  tasksWrite: (json: string) => ipcRenderer.invoke('tasks-write', json) as Promise<{ path:string, count:number }>,
+  jestScaffoldForTasks: (tasks: {id:string,title:string,description?:string}[]) => ipcRenderer.invoke('jest-scaffold', tasks)
 });
