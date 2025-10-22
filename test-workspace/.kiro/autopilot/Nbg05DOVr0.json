@@ -1,0 +1,107 @@
+{
+  "id": "Nbg05DOVr0",
+  "root": "./test-workspace",
+  "provider": "mock",
+  "model": "mock-echo",
+  "prompt": "Add TypeScript types and JSDoc to all functions",
+  "createdAt": "2025-10-22T11:04:36.230Z",
+  "updatedAt": "2025-10-22T11:05:12.610Z",
+  "state": "awaiting-approval",
+  "steps": [
+    {
+      "id": "bA51FC",
+      "title": "Enhance example function",
+      "rationale": "Improve clarity and types",
+      "targetFiles": [
+        "src/example.ts"
+      ],
+      "status": "tested",
+      "patches": [
+        {
+          "file": "src/example.ts",
+          "mode": "hunks",
+          "diff": "--- a/src/example.ts\n+++ b/src/example.ts\n@@ -1 +1,7 @@\n-export function add(a,b){return a+b}\n+// Enhanced by Autopilot (Mock)\n+/**\n+ * Adds two numbers together\n+ * @param a First number\n+ * @param b Second number\n+ * @returns Sum of a and b\n+ */\n+export function add(a: number, b: number): number {\n+  return a + b;\n+}",
+          "explanation": "Added JSDoc comments and explicit TypeScript types using unified diff.",
+          "approved": false
+        }
+      ],
+      "test": {
+        "ok": true,
+        "output": "No package.json; skipping tests."
+      }
+    },
+    {
+      "id": "4t80oR",
+      "title": "Add documentation",
+      "rationale": "Improve code maintainability",
+      "targetFiles": [
+        "README.md"
+      ],
+      "status": "staged",
+      "patches": [
+        {
+          "file": "src/example.ts",
+          "mode": "hunks",
+          "diff": "--- a/src/example.ts\n+++ b/src/example.ts\n@@ -1 +1,7 @@\n-export function add(a,b){return a+b}\n+// Enhanced by Autopilot (Mock)\n+/**\n+ * Adds two numbers together\n+ * @param a First number\n+ * @param b Second number\n+ * @returns Sum of a and b\n+ */\n+export function add(a: number, b: number): number {\n+  return a + b;\n+}",
+          "explanation": "Added JSDoc comments and explicit TypeScript types using unified diff.",
+          "approved": false
+        }
+      ]
+    }
+  ],
+  "log": [
+    {
+      "time": "2025-10-22T11:05:12.610Z",
+      "msg": "Staged 1 file(s) for review in .kiro/staging. Awaiting approval."
+    },
+    {
+      "time": "2025-10-22T11:05:12.605Z",
+      "msg": "Diff application failed for src/example.ts: Error: Unknown line 12 \"+export function add(a: number, b: number): number {\""
+    },
+    {
+      "time": "2025-10-22T11:05:12.401Z",
+      "msg": "Executing: Add documentation"
+    },
+    {
+      "time": "2025-10-22T11:05:12.401Z",
+      "msg": "Tests passed."
+    },
+    {
+      "time": "2025-10-22T11:05:12.400Z",
+      "msg": "Running tests for step: Enhance example function"
+    },
+    {
+      "time": "2025-10-22T11:05:12.400Z",
+      "msg": "Applied 0 file(s), skipped 1 file(s) to workspace."
+    },
+    {
+      "time": "2025-10-22T11:05:12.400Z",
+      "msg": "Skipped src/example.ts (not approved)"
+    },
+    {
+      "time": "2025-10-22T11:05:12.399Z",
+      "msg": "Selective approval: applying 1 selected file(s)"
+    },
+    {
+      "time": "2025-10-22T11:04:36.766Z",
+      "msg": "Staged 1 file(s) for review in .kiro/staging. Awaiting approval."
+    },
+    {
+      "time": "2025-10-22T11:04:36.757Z",
+      "msg": "Diff application failed for src/example.ts: Error: Unknown line 12 \"+export function add(a: number, b: number): number {\""
+    },
+    {
+      "time": "2025-10-22T11:04:36.481Z",
+      "msg": "Executing: Enhance example function"
+    },
+    {
+      "time": "2025-10-22T11:04:36.481Z",
+      "msg": "Planned 2 step(s)."
+    },
+    {
+      "time": "2025-10-22T11:04:36.230Z",
+      "msg": "Planning steps…"
+    }
+  ],
+  "waitingStepId": "4t80oR"
+}

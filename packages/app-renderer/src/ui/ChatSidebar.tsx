@@ -5,9 +5,9 @@ import { push, setBusy, setError, clear, type Msg } from '../store/chatSlice';
 import { setProvider, setModel, setAutopilot } from '../store/settingsSlice';
 
 const modelsByProvider: Record<string, string[]> = {
-  auto: ['claude-sonnet-4','claude-3.5-sonnet','gpt-4o','gpt-5'],
-  anthropic: ['claude-sonnet-4','claude-3.5-sonnet'],
-  openai: ['gpt-4o','gpt-4o-mini','gpt-5'],
+  auto: ['claude-sonnet-4'],
+  anthropic: ['claude-sonnet-4'],
+  openai: ['claude-sonnet-4'],
   mock: ['mock-echo']
 };
 
@@ -22,6 +22,44 @@ export const ChatSidebar: React.FC = () => {
 
   const send = async () => {
     if (!input.trim() || busy) return;
+    
+    // Autopilot mode: start autopilot job instead of regular chat
+    if (autopilot) {
+      try {
+        const root = await window.kirobridge?.workspaceRoot?.();
+        if (!root) {
+          dispatch(setError('Please open a workspace folder first'));
+          return;
+        }
+        
+        dispatch(push({ role: 'user', content: input }));
+        dispatch(setBusy(true));
+        dispatch(setError(undefined));
+        setInput('');
+        
+        const body = { root, prompt: input, provider, model };
+        const response = await fetch('http://127.0.0.1:4455/autopilot/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        
+        const result = await response.json();
+        if (response.ok && result?.id) {
+          dispatch(push({ 
+            role: 'assistant', 
+            content: `🤖 Autopilot job started! Job ID: ${result.id}\n\nSwitch to the Autopilot tab to monitor progress and approve steps.` 
+          }));
+        } else {
+          throw new Error(result?.error || 'Failed to start autopilot');
+        }
+      } catch (e: any) {
+        dispatch(setError(e?.message ?? 'autopilot_failed'));
+      } finally {
+        dispatch(setBusy(false));
+      }
+      return;
+    }
     
     let finalPrompt = input;
     

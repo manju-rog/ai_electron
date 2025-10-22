@@ -1,0 +1,1 @@
+Added JSDoc comments and explicit TypeScript types using unified diff.

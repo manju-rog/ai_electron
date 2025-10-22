@@ -7,6 +7,7 @@ import { chatRouter } from './routes/chat';
 import { specRouter } from './routes/spec';
 import { agentRouter } from './routes/agent';
 import { contextRouter } from './routes/context';
+import { autopilotRouter } from './routes/autopilot';
 
 export function createApp() {
   dotenv.config();
@@ -16,12 +17,13 @@ export function createApp() {
   app.use(express.json({ limit: '15mb' }));
   app.use(morgan('tiny'));
 
-  app.get('/health', (_req, res) => res.json({ ok: true, name: 'KiroClone Server', phase: 4 }));
+  app.get('/health', (_req, res) => res.json({ ok: true, name: 'KiroClone Server', phase: 8 }));
 
   app.use('/chat', chatRouter);
   app.use('/generate/spec', specRouter);
   app.use('/agent', agentRouter);
   app.use('/context', contextRouter);
+  app.use('/autopilot', autopilotRouter);
 
   return app;
 }

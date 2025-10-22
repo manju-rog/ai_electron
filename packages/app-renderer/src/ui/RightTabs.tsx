@@ -3,11 +3,12 @@ import { ChatSidebar } from './ChatSidebar';
 import { SpecsPanel } from './SpecsPanel';
 import { DiffsPanel } from './DiffsPanel';
 import { ContextPanel } from './ContextPanel';
+import { AutopilotPanel } from './AutopilotPanel';
 
 export const RightTabs: React.FC = () => {
-  const [tab, setTab] = useState<'chat'|'specs'|'diffs'|'context'>('chat');
+  const [tab, setTab] = useState<'chat'|'specs'|'diffs'|'context'|'autopilot'>('chat');
   
-  const tabBtn = (k:'chat'|'specs'|'diffs'|'context', label:string) =>
+  const tabBtn = (k:'chat'|'specs'|'diffs'|'context'|'autopilot', label:string) =>
     <button 
       onClick={() => setTab(k)} 
       style={{ 
@@ -36,9 +37,11 @@ export const RightTabs: React.FC = () => {
         {tabBtn('specs','Specs')}
         {tabBtn('diffs','Diffs')}
         {tabBtn('context','Context')}
+        {tabBtn('autopilot','Autopilot')}
       </div>
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {tab === 'context' ? <ContextPanel /> : 
+        {tab === 'autopilot' ? <AutopilotPanel /> :
+         tab === 'context' ? <ContextPanel /> : 
          tab === 'diffs' ? <DiffsPanel /> : 
          tab === 'specs' ? <SpecsPanel /> : 
          <ChatSidebar />}

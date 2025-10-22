@@ -1,0 +1,87 @@
+{
+  "id": "9Vh60HVbg4",
+  "root": "./test-workspace",
+  "provider": "mock",
+  "model": "mock-echo",
+  "prompt": "Add TypeScript types to functions",
+  "createdAt": "2025-10-22T10:50:39.625Z",
+  "updatedAt": "2025-10-22T10:51:27.527Z",
+  "state": "awaiting-approval",
+  "steps": [
+    {
+      "id": "Oounnm",
+      "title": "Enhance example function",
+      "rationale": "Improve clarity and types",
+      "targetFiles": [
+        "src/example.ts"
+      ],
+      "status": "tested",
+      "patches": [
+        {
+          "file": "src/example.ts",
+          "newContent": "// Enhanced by Autopilot (Mock)\n/**\n * Adds two numbers together\n * @param a First number\n * @param b Second number\n * @returns Sum of a and b\n */\nexport function add(a: number, b: number): number {\n  return a + b;\n}",
+          "explanation": "Added JSDoc comments and explicit TypeScript types for better code clarity."
+        }
+      ],
+      "test": {
+        "ok": true,
+        "output": "No package.json; skipping tests."
+      }
+    },
+    {
+      "id": "O90NOB",
+      "title": "Add documentation",
+      "rationale": "Improve code maintainability",
+      "targetFiles": [
+        "README.md"
+      ],
+      "status": "staged",
+      "patches": [
+        {
+          "file": "src/example.ts",
+          "newContent": "// Enhanced by Autopilot (Mock)\n/**\n * Adds two numbers together\n * @param a First number\n * @param b Second number\n * @returns Sum of a and b\n */\nexport function add(a: number, b: number): number {\n  return a + b;\n}",
+          "explanation": "Added JSDoc comments and explicit TypeScript types for better code clarity."
+        }
+      ]
+    }
+  ],
+  "log": [
+    {
+      "time": "2025-10-22T10:51:27.527Z",
+      "msg": "Staged 1 file(s) for review in .kiro/staging. Awaiting approval."
+    },
+    {
+      "time": "2025-10-22T10:51:27.378Z",
+      "msg": "Executing: Add documentation"
+    },
+    {
+      "time": "2025-10-22T10:51:27.378Z",
+      "msg": "Tests passed."
+    },
+    {
+      "time": "2025-10-22T10:51:27.378Z",
+      "msg": "Running tests for step: Enhance example function"
+    },
+    {
+      "time": "2025-10-22T10:51:27.378Z",
+      "msg": "Applied 1 file(s) to workspace."
+    },
+    {
+      "time": "2025-10-22T10:50:39.924Z",
+      "msg": "Staged 1 file(s) for review in .kiro/staging. Awaiting approval."
+    },
+    {
+      "time": "2025-10-22T10:50:39.782Z",
+      "msg": "Executing: Enhance example function"
+    },
+    {
+      "time": "2025-10-22T10:50:39.782Z",
+      "msg": "Planned 2 step(s)."
+    },
+    {
+      "time": "2025-10-22T10:50:39.626Z",
+      "msg": "Planning steps…"
+    }
+  ],
+  "waitingStepId": "O90NOB"
+}

@@ -2,7 +2,15 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { resolveProvider } from '../providers';
 import type { ChatRequest } from '../providers/types';
-import { nanoid } from 'nanoid';
+// Simple ID generator for compatibility
+function generateId(length = 10): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
 
 export const agentRouter = Router();
 
@@ -80,7 +88,7 @@ agentRouter.post('/generate', async (req, res) => {
     const normalized = patches
       .filter(p => p && typeof p.file === 'string' && typeof p.newContent === 'string')
       .map(p => ({
-        id: nanoid(8),
+        id: generateId(8),
         file: String(p.file),
         mode: 'replaceWhole' as const,
         newContent: String(p.newContent),

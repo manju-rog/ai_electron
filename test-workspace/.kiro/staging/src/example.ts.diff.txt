@@ -1,0 +1,14 @@
+--- a/src/example.ts
++++ b/src/example.ts
+@@ -1 +1,7 @@
+-export function add(a,b){return a+b}
++// Enhanced by Autopilot (Mock)
++/**
++ * Adds two numbers together
++ * @param a First number
++ * @param b Second number
++ * @returns Sum of a and b
++ */
++export function add(a: number, b: number): number {
++  return a + b;
++}

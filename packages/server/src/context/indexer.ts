@@ -37,7 +37,7 @@ async function loadEmbedder(): Promise<(text: string) => Promise<number[]>> {
   }
   // Transformers.js (local)
   env.allowLocalModels = true;
-  let pipe: Pipeline | null = null;
+  let pipe: any = null;
   async function getPipe() {
     if (!pipe) {
       pipe = await pipeline("feature-extraction", DEFAULT_MODEL, { quantized: true });
@@ -92,7 +92,7 @@ function sha1(s: string) {
 
 export async function buildIndex(root: string): Promise<IndexFile> {
   const embed = await loadEmbedder();
-  const entries = await fg(GLOBS, { cwd: root, ignore: IGNORE, dot: false, unixify: true });
+  const entries = await fg(GLOBS, { cwd: root, ignore: IGNORE, dot: false });
   const items: IndexItem[] = [];
 
   for (const rel of entries) {
